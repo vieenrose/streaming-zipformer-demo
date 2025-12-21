@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 
-# Real-time speech recognition from a microphone with sherpa-onnx Python API
-# with endpoint detection.
-#
-# Please refer to
-# https://k2-fsa.github.io/sherpa/onnx/pretrained_models/index.html
-# to download pre-trained models
+"""
+Speech recognition from microphone input using Sherpa-ONNX
+"""
 
 import argparse
 import sys
@@ -14,11 +11,7 @@ from pathlib import Path
 try:
     import sounddevice as sd
 except ImportError:
-    print("Please install sounddevice first. You can use")
-    print()
-    print("  pip install sounddevice")
-    print()
-    print("to install it")
+    print("Please install sounddevice first")
     sys.exit(-1)
 
 import sherpa_onnx
@@ -80,59 +73,18 @@ def get_args():
     )
 
     parser.add_argument(
-        "--hotwords-file",
-        type=str,
-        default="",
-        help="""
-        The file containing hotwords, one words/phrases per line, and for each
-        phrase the bpe/cjkchar are separated by a space. For example:
-
-        ▁HE LL O ▁WORLD
-        你 好 世 界
-        """,
-    )
-
-    parser.add_argument(
-        "--hotwords-score",
-        type=float,
-        default=1.5,
-        help="""
-        The hotword score of each token for biasing word/phrase. Used only if
-        --hotwords-file is given.
-        """,
-    )
-
-    parser.add_argument(
-        "--blank-penalty",
-        type=float,
-        default=0.0,
-        help="""
-        The penalty applied on blank symbol during decoding.
-        Note: It is a positive value that would be applied to logits like
-        this `logits[:, 0] -= blank_penalty` (suppose logits.shape is
-        [batch_size, vocab] and blank id is 0).
-        """,
-    )
-
-    parser.add_argument(
-        "--hr-lexicon",
-        type=str,
-        default="",
-        help="If not empty, it is the lexicon.txt for homophone replacer",
-    )
-
-    parser.add_argument(
-        "--hr-rule-fsts",
-        type=str,
-        default="",
-        help="If not empty, it is the replace.fst for homophone replacer",
-    )
-
-    parser.add_argument(
         "--device",
         type=int,
         default=None,
-        help="Audio device index (e.g., hw:0,6). If not specified, uses default device",
+        help="Audio device index (e.g., 4 for hw:0,6)",
+    )
+
+
+    parser.add_argument(
+        "--num-threads",
+        type=int,
+        default=1,
+        help="Number of threads for speech recognition model",
     )
 
     return parser.parse_args()
@@ -143,28 +95,21 @@ def create_recognizer(args):
     assert_file_exists(args.decoder)
     assert_file_exists(args.joiner)
     assert_file_exists(args.tokens)
-    # Please replace the model files if needed.
-    # See https://k2-fsa.github.io/sherpa/onnx/pretrained_models/index.html
-    # for download links.
+
     recognizer = sherpa_onnx.OnlineRecognizer.from_transducer(
         tokens=args.tokens,
         encoder=args.encoder,
         decoder=args.decoder,
         joiner=args.joiner,
-        num_threads=1,
+        num_threads=args.num_threads,
         sample_rate=16000,
         feature_dim=80,
         enable_endpoint_detection=True,
         rule1_min_trailing_silence=2.4,
         rule2_min_trailing_silence=1.2,
-        rule3_min_utterance_length=300,  # it essentially disables this rule
+        rule3_min_utterance_length=300,
         decoding_method=args.decoding_method,
         provider=args.provider,
-        hotwords_file=args.hotwords_file,
-        hotwords_score=args.hotwords_score,
-        blank_penalty=args.blank_penalty,
-        hr_rule_fsts=args.hr_rule_fsts,
-        hr_lexicon=args.hr_lexicon,
     )
     return recognizer
 
@@ -187,23 +132,24 @@ def main():
         device_idx = sd.default.device[0]
         print(f'Using default device: {devices[device_idx]["name"]}')
 
+    print(f"Threads: {args.num_threads}")
+
     recognizer = create_recognizer(args)
     print("Started! Please speak")
 
-    # The model is using 16 kHz, we use 48 kHz here to demonstrate that
-    # sherpa-onnx will do resampling inside.
     sample_rate = 48000
-    samples_per_read = int(0.1 * sample_rate)  # 0.1 second = 100 ms
+    samples_per_read = int(0.1 * sample_rate)  # 100ms
 
     stream = recognizer.create_stream()
-
     display = sherpa_onnx.Display()
 
     with sd.InputStream(device=device_idx, channels=1, dtype="float32", samplerate=sample_rate) as s:
         while True:
-            samples, _ = s.read(samples_per_read)  # a blocking read
+            samples, _ = s.read(samples_per_read)
             samples = samples.reshape(-1)
+
             stream.accept_waveform(sample_rate, samples)
+
             while recognizer.is_ready(stream):
                 recognizer.decode_stream(stream)
 
@@ -223,7 +169,6 @@ def main():
 
 
 if __name__ == "__main__":
-
     try:
         main()
     except KeyboardInterrupt:
