@@ -118,7 +118,8 @@ class UIFormatter:
 
         top = UIFormatter.TOP_LEFT + UIFormatter.HORIZONTAL * (width - 2) + UIFormatter.TOP_RIGHT
         middle = UIFormatter.VERTICAL + line + UIFormatter.VERTICAL
-        return f"{top}\n{middle}"
+        bottom = UIFormatter.BOTTOM_LEFT + UIFormatter.HORIZONTAL * (width - 2) + UIFormatter.BOTTOM_RIGHT
+        return f"{top}\n{middle}\n{bottom}"
 
     @staticmethod
     def format_table_separator(col_widths: List[int], junction_char: Optional[str] = None) -> str:
