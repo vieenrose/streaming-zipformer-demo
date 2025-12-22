@@ -58,8 +58,8 @@ P.S. silero-vad-lite supports both 8kHz and 16kHz while ten-vad requires 16kHz i
 2. download and extract all required ASR models (multilingual and bilingual models), then test each of them with the microphone-based speech recognition script from step 1 to validate they function properly with real audio input
 3. redesign hotwords to satisfy 3.2.2. for models which are not delivred with bpe.vocab, make sure to export their own one with official [tool]](https://github.com/k2-fsa/sherpa-onnx/blob/master/scripts/export_bpe_vocab.py). then make hotword work with hotwords file on script obtained in step 1 then in the next with stream-level dynamic hotword list. 
 4. enumerate all available audio input devices on the system and automatically detect the active microphone through Voice Activity Detection (VAD) in real-time scanning cycles; exit when speech is detected above a configurable threshold (default 0.75) and display formatted device metrics (VAD probability, RMS levels, cycle timing) in a docker-compatible text-based UI with unicode table formatting and progress bar indicators.
-5. create MP3 recorder
-6. integrate all ASR engines that perform STT in parallel
+5. implement a background MP3 recording system that captures audio from the selected device while simultaneously feeding the same audio stream to ASR engines for real-time transcription.
+6. orchestrate multiple Automatic Speech Recognition engines running simultaneously to provide real-time comparative transcription, enabling users to evaluate model performance side-by-side with hotword support
 7. add UIs
 8. ensure zh-TW to zh-CN conversion on hotword list and zn-CN to zh-TW on transcript
 8. port into docker compose
