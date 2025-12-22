@@ -42,8 +42,9 @@ class ModelConfig:
     bpe_model_path: Optional[str]      # Path to BPE model (optional)
     bpe_vocab_path: Optional[str]      # Path to BPE vocab for hotwords (optional)
     hotwords: Optional[HotwordConfig]  # Hotword configuration (optional)
+    modeling_unit: str = "cjkchar+bpe" # Modeling unit for BPE tokenization (bpe, cjkchar, cjkchar+bpe)
     sample_rate: int = 16000           # Sample rate for model (IMPORTANT: ASR requires 16kHz)
-    num_threads: int = 1               # Number of threads for ONNX inference
+    num_threads: int = 4               # Number of threads for ONNX inference (4 per model)
     provider: str = "cpu"              # ONNX execution provider ("cpu" or "cuda")
 
     def validate(self) -> tuple[bool, str]:
@@ -115,10 +116,11 @@ class ASRConfig:
             bpe_model_path=os.path.join(model1_dir, "bpe.model"),
             bpe_vocab_path=os.path.join(model1_dir, "bpe.vocab"),
             hotwords=HotwordConfig(
-                hotwords=["Ken Li", "特雷危", "Mark Ma"],
-                boost_score=2.0
+                hotwords=["KEN LI", "JOHN SMITH", "MARK MA", "特雷危", "林志玲"],
+                boost_score=1.5
             ),
-            num_threads=1,
+            modeling_unit="cjkchar+bpe",  # Required for bilingual zh-en with hotwords
+            num_threads=4,
         )
 
         # Model 2: Medium Bilingual (2023-02-20)
@@ -134,9 +136,10 @@ class ASRConfig:
             joiner_path=os.path.join(model2_dir, "joiner-epoch-99-avg-1.int8.onnx"),
             tokens_path=os.path.join(model2_dir, "tokens.txt"),
             bpe_model_path=None,  # This model doesn't have BPE model
-            bpe_vocab_path=None,  # TODO: Export if hotwords needed
+            bpe_vocab_path=None,  # No bpe.vocab = no hotword support
             hotwords=None,  # Hotwords not available without bpe.vocab
-            num_threads=1,
+            modeling_unit="cjkchar+bpe",  # Still bilingual tokenization
+            num_threads=4,
         )
 
         # Model 3: Multilingual (2025-02-10)
@@ -154,10 +157,11 @@ class ASRConfig:
             bpe_model_path=os.path.join(model3_dir, "bpe.model"),
             bpe_vocab_path=os.path.join(model3_dir, "bpe.vocab"),
             hotwords=HotwordConfig(
-                hotwords=["Ken Li", "特雷危", "Mark Ma"],
-                boost_score=2.0
+                hotwords=["KEN LI", "JOHN SMITH", "MARK MA", "特雷危", "林志玲"],
+                boost_score=1.5
             ),
-            num_threads=1,
+            modeling_unit="cjkchar+bpe",  # Required for multilingual with hotwords
+            num_threads=4,
         )
 
     def validate_all(self) -> tuple[bool, Dict[str, str]]:

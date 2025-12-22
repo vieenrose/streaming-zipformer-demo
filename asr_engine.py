@@ -93,8 +93,14 @@ class ModelInstance:
         self.model_config = model_config
         self.recognizer = recognizer
 
-        # Create stream for this model
-        self.stream = recognizer.create_stream()
+        # Create stream for this model with hotwords if available
+        # Note: hotwords_score is set at recognizer level, only hotwords string passed to create_stream
+        if model_config.hotwords and model_config.bpe_vocab_path:
+            # Format hotwords as newline-separated uppercase strings (required for BPE tokenization)
+            hotwords_str = "\n".join([hw.upper() for hw in model_config.hotwords.hotwords])
+            self.stream = recognizer.create_stream(hotwords=hotwords_str)
+        else:
+            self.stream = recognizer.create_stream()
 
         # Transcription state
         self.state = TranscriptionState()
@@ -168,8 +174,13 @@ class ModelInstance:
         """Reset stream and state for new utterance."""
         with self._state_lock:
             try:
-                # Create new stream
-                self.stream = self.recognizer.create_stream()
+                # Create new stream with hotwords if available
+                # Note: hotwords_score is set at recognizer level, only hotwords string passed here
+                if self.model_config.hotwords and self.model_config.bpe_vocab_path:
+                    hotwords_str = "\n".join([hw.upper() for hw in self.model_config.hotwords.hotwords])
+                    self.stream = self.recognizer.create_stream(hotwords=hotwords_str)
+                else:
+                    self.stream = self.recognizer.create_stream()
                 self.state.reset()
             except Exception as e:
                 print(f"✗ Error resetting {self.model_id}: {e}")
@@ -177,7 +188,12 @@ class ModelInstance:
     def get_result_snapshot(self) -> StreamResult:
         """Get thread-safe snapshot of current result."""
         with self._state_lock:
-            latency = (time.time() - self._start_time) * 1000
+            # Total elapsed time since model creation
+            total_time = (time.time() - self._start_time) * 1000
+
+            # Average latency per chunk
+            avg_latency = total_time / max(1, self.state.chunk_count)
+
             return StreamResult(
                 model_id=self.model_id,
                 model_name=self.model_config.name,
@@ -186,7 +202,7 @@ class ModelInstance:
                 updated_at=self.state.last_update_time,
                 chunks_processed=self.state.chunk_count,
                 endpoint_detected=self.state.is_endpoint_detected,
-                latency_ms=latency,
+                latency_ms=avg_latency,
             )
 
 
@@ -261,9 +277,11 @@ class ASREnginePool:
                         "enable_endpoint_detection": True,
                     }
 
-                    # Add hotword support if available
+                    # Add hotword support if available (requires bpe_vocab + modified_beam_search)
                     if model_config.bpe_vocab_path and model_config.hotwords:
                         kwargs["bpe_vocab"] = model_config.bpe_vocab_path
+                        kwargs["modeling_unit"] = model_config.modeling_unit  # cjkchar+bpe for bilingual/multilingual
+                        kwargs["hotwords_score"] = model_config.hotwords.boost_score  # Set at recognizer level
                         kwargs["decoding_method"] = "modified_beam_search"  # Required for hotwords
 
                     # Create recognizer
@@ -278,6 +296,18 @@ class ASREnginePool:
 
                     self.models[model_id] = model_instance
                     print(f"   ✓ Loaded successfully")
+
+                    # Show configuration
+                    print(f"     Threads: {model_config.num_threads} | Decoding: {kwargs['decoding_method']}")
+
+                    # Show hotword status
+                    if model_config.hotwords and model_config.bpe_vocab_path:
+                        hotwords_list = ", ".join(model_config.hotwords.hotwords)
+                        print(f"     Hotwords: ✓ ENABLED | Boost: {model_config.hotwords.boost_score}")
+                        print(f"               [{hotwords_list}]")
+                    else:
+                        reason = "No hotwords config" if not model_config.hotwords else "No bpe.vocab"
+                        print(f"     Hotwords: ✗ DISABLED ({reason})")
 
                 except Exception as e:
                     print(f"   ✗ Failed to load: {e}")

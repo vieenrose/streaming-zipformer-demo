@@ -165,12 +165,12 @@ def main():
         stream.start()
 
         print("▶ Recording and transcribing CONTINUOUSLY...")
-        print("  Speak clearly into the microphone!")
+        print("  Each model runs on 4 CPU threads for better performance")
         print("  Press Ctrl+C to stop.\n")
-        print("┌" + "─" * 78 + "┐")
-        print("│ LIVE ASR TRANSCRIPTION (MP3 Recording in Background)".ljust(79) + "│")
-        print("│ Press Ctrl+C to stop recording".ljust(79) + "│")
-        print("├" + "─" * 78 + "┤")
+        print("┌" + "─" * 85 + "┐")
+        print("│ LIVE ASR TRANSCRIPTION (MP3 Recording in Background)".ljust(86) + "│")
+        print("│ Each model: 4 threads | Latency = avg time per chunk".ljust(86) + "│")
+        print("├" + "─" * 85 + "┤")
 
         chunks_processed = 0
         start_time = time.time()
@@ -198,25 +198,29 @@ def main():
                 if chunks_processed % 10 == 0:
                     elapsed = time.time() - start_time
                     results = asr_pool.get_results()
+
                     for model_id, result in results.items():
                         display_text = result.partial if result.partial else result.final
-                        display_text = display_text[:55] if len(display_text) > 55 else display_text
-                        print(f"│ {model_id:18s} │ {display_text:57s} │")
+                        display_text = display_text[:40] if len(display_text) > 40 else display_text
+                        # Show: model_id | text | latency (ms/chunk)
+                        perf_str = f"  {result.latency_ms:6.1f}ms"
+                        print(f"│ {model_id:18s} │ {display_text:40s} │{perf_str:8s} │")
 
-                    # Show elapsed time
+                    # Show elapsed time and chunk throughput
                     mins = int(elapsed // 60)
                     secs = elapsed % 60
-                    time_str = f"[Recording: {mins:02d}:{secs:05.2f}]"
-                    print(f"│ {time_str:78s} │")
+                    throughput = chunks_processed / elapsed if elapsed > 0 else 0
+                    info_str = f"[{mins:02d}:{secs:05.2f}] {throughput:5.1f} ch/s"
+                    print(f"│ {info_str:78s} │")
 
         except KeyboardInterrupt:
-            print("\n│ ✓ Stopping (Ctrl+C received)...".ljust(79) + "│")
+            print("\n│ ✓ Stopping (Ctrl+C received)...".ljust(86) + "│")
 
         # Stop stream and MP3 writer
         stream.stop()
         stream.close()
 
-        print("└" + "─" * 78 + "┘")
+        print("└" + "─" * 85 + "┘")
         print("\n▶ Finalizing MP3 file...")
         mp3_writer.stop()
 
