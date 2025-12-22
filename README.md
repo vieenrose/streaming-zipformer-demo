@@ -61,4 +61,5 @@ P.S. silero-vad-lite supports both 8kHz and 16kHz while ten-vad requires 16kHz i
 5. create MP3 recorder
 6. integrate all ASR engines that perform STT in parallel
 7. add UIs
+8. ensure zh-TW to zh-CN conversion on hotword list and zn-CN to zh-TW on transcript
 8. port into docker compose

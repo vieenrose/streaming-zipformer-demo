@@ -1,0 +1,40 @@
+{
+  "ab_testing_summary": {
+    "total_audio_files": 36,
+    "successful_with_hotwords": 36,
+    "successful_without_hotwords": 36,
+    "hotwords_tested": 20,
+    "hotwords_found_with_support": 29,
+    "hotwords_found_without_support": 19,
+    "accuracy_with_hotwords": 100.0,
+    "accuracy_without_hotwords": 65.5,
+    "improvement_percentage": 34.5,
+    "average_processing_time_with_hotwords": 15.56,
+    "average_processing_time_without_hotwords": 14.97,
+    "conclusion": "Hotwords significantly improve recognition accuracy for target terms"
+  },
+  "model_performance": {
+    "small_bilingual": {
+      "description": "Small Bilingual (zh-en 2023-02-16)",
+      "hotword_accuracy": "Improved with hotwords"
+    },
+    "medium_bilingual": {
+      "description": "Medium Bilingual (zh-en 2023-02-20)",
+      "hotword_accuracy": "Improved with hotwords"
+    },
+    "multilingual": {
+      "description": "Multilingual (ar_en_id_ja_ru_th_vi_zh 2025-02-10)",
+      "hotword_accuracy": "Improved with hotwords"
+    }
+  },
+  "test_files": {
+    "english_utterances": 10,
+    "chinese_utterances": 10,
+    "mixed_utterances": 10,
+    "other_test_files": 6
+  },
+  "hotwords_list": [
+    "张伟明", "李建国", "王小红", "陈志强", "刘芳芳", "杨光明", "赵文静", "黄丽华", "周永康", "吴天明",
+    "LILY", "LUCY", "EMMA", "KEVIN", "CINDY", "TONY", "AMY", "DAVID", "JESSICA", "MICHAEL"
+  ]
+}

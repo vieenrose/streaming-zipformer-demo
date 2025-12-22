@@ -116,7 +116,7 @@ class ASRConfig:
             bpe_model_path=os.path.join(model1_dir, "bpe.model"),
             bpe_vocab_path=os.path.join(model1_dir, "bpe.vocab"),
             hotwords=HotwordConfig(
-                hotwords=["KEN LI", "JOHN SMITH", "MARK MA", "特雷危", "林志玲"],
+                hotwords=["张伟明", "李建国", "王小红", "陈志强", "刘芳芳", "杨光明", "赵文静", "黄丽华", "周永康", "吴天明", "LILY", "LUCY", "EMMA", "KEVIN", "CINDY", "TONY", "AMY", "DAVID", "JESSICA", "MICHAEL"],
                 boost_score=1.5
             ),
             modeling_unit="cjkchar+bpe",  # Required for bilingual zh-en with hotwords
@@ -135,10 +135,13 @@ class ASRConfig:
             decoder_path=os.path.join(model2_dir, "decoder-epoch-99-avg-1.onnx"),
             joiner_path=os.path.join(model2_dir, "joiner-epoch-99-avg-1.int8.onnx"),
             tokens_path=os.path.join(model2_dir, "tokens.txt"),
-            bpe_model_path=None,  # This model doesn't have BPE model
-            bpe_vocab_path=None,  # No bpe.vocab = no hotword support
-            hotwords=None,  # Hotwords not available without bpe.vocab
-            modeling_unit="cjkchar+bpe",  # Still bilingual tokenization
+            bpe_model_path=os.path.join(model2_dir, "bpe.model"),  # Now we have the BPE model
+            bpe_vocab_path=os.path.join(model2_dir, "bpe.vocab"),  # Now we have the bpe.vocab
+            hotwords=HotwordConfig(
+                hotwords=["张伟明", "李建国", "王小红", "陈志强", "刘芳芳", "杨光明", "赵文静", "黄丽华", "周永康", "吴天明", "LILY", "LUCY", "EMMA", "KEVIN", "CINDY", "TONY", "AMY", "DAVID", "JESSICA", "MICHAEL"],
+                boost_score=1.5
+            ),
+            modeling_unit="cjkchar+bpe",  # Required for bilingual zh-en with hotwords
             num_threads=4,
         )
 
@@ -157,7 +160,7 @@ class ASRConfig:
             bpe_model_path=os.path.join(model3_dir, "bpe.model"),
             bpe_vocab_path=os.path.join(model3_dir, "bpe.vocab"),
             hotwords=HotwordConfig(
-                hotwords=["KEN LI", "JOHN SMITH", "MARK MA", "特雷危", "林志玲"],
+                hotwords=["张伟明", "李建国", "王小红", "陈志强", "刘芳芳", "杨光明", "赵文静", "黄丽华", "周永康", "吴天明", "LILY", "LUCY", "EMMA", "KEVIN", "CINDY", "TONY", "AMY", "DAVID", "JESSICA", "MICHAEL"],
                 boost_score=1.5
             ),
             modeling_unit="cjkchar+bpe",  # Required for multilingual with hotwords
