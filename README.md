@@ -57,7 +57,7 @@ P.S. silero-vad-lite supports both 8kHz and 16kHz while ten-vad requires 16kHz i
 1. take the existing speech-recognition-from-microphone-with-endpoint-detection.py script, run it on the host system ensuring it functions correctly by validating that it can accurately transcribe speech from the microphone; if any issues arise during microphone-based transcription, switch to using soundfile to test with a known audio file that has established ground truth for verification.
 2. download and extract all required ASR models (multilingual and bilingual models), then test each of them with the microphone-based speech recognition script from step 1 to validate they function properly with real audio input
 3. redesign hotwords to satisfy 3.2.2. for models which are not delivred with bpe.vocab, make sure to export their own one with official [tool]](https://github.com/k2-fsa/sherpa-onnx/blob/master/scripts/export_bpe_vocab.py). then make hotword work with hotwords file on script obtained in step 1 then in the next with stream-level dynamic hotword list. 
-4. create audio input device enumeration
+4. enumerate all available audio input devices on the system and automatically detect the active microphone through Voice Activity Detection (VAD) in real-time scanning cycles; exit when speech is detected above a configurable threshold (default 0.75) and display formatted device metrics (VAD probability, RMS levels, cycle timing) in a docker-compatible text-based UI with unicode table formatting and progress bar indicators.
 5. create MP3 recorder
 6. add UIs
 7. port into docker compose
