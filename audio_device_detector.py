@@ -17,8 +17,10 @@ Usage:
 import argparse
 import sys
 import time
+import threading
 from typing import List, Tuple, Optional
 from datetime import datetime
+from queue import Queue, Empty
 
 import numpy as np
 import sounddevice as sd
@@ -26,6 +28,195 @@ import soundfile as sf
 
 from audio_device_enum import enumerate_input_devices, AudioDeviceInfo, print_devices
 from audio_processor import Resampler, RMSMeter, VADDetector, AGC
+
+
+class UIFormatter:
+    """Docker-friendly UI formatter for audio device scanner."""
+
+    # Box drawing characters
+    TOP_LEFT = "┌"
+    TOP_RIGHT = "┐"
+    BOTTOM_LEFT = "└"
+    BOTTOM_RIGHT = "┘"
+    HORIZONTAL = "─"
+    VERTICAL = "│"
+    CROSS = "┼"
+    T_DOWN = "┬"
+    T_UP = "┴"
+    T_LEFT = "┤"
+    T_RIGHT = "├"
+
+    # VU meter characters
+    EMPTY_BAR = "░"
+    FILLED_BAR = "▓"
+
+    @staticmethod
+    def detect_color_support() -> bool:
+        """Check if terminal supports colors."""
+        import os
+        if os.environ.get("NO_COLOR"):
+            return False
+        return sys.stdout.isatty()
+
+    @staticmethod
+    def colorize(text: str, color: str) -> str:
+        """Apply ANSI color if supported."""
+        if not UIFormatter.detect_color_support():
+            return text
+
+        colors = {
+            "cyan": "\033[36m",
+            "green": "\033[32m",
+            "yellow": "\033[33m",
+            "red": "\033[31m",
+            "gray": "\033[90m",
+            "bold": "\033[1m",
+            "reset": "\033[0m",
+        }
+
+        color_code = colors.get(color, "")
+        reset = colors["reset"]
+        return f"{color_code}{text}{reset}"
+
+    @staticmethod
+    def format_banner(title: str) -> str:
+        """Create a bordered banner."""
+        width = 70
+        side = UIFormatter.VERTICAL
+        top = UIFormatter.TOP_LEFT + UIFormatter.HORIZONTAL * (width - 2) + UIFormatter.TOP_RIGHT
+        bottom = UIFormatter.BOTTOM_LEFT + UIFormatter.HORIZONTAL * (width - 2) + UIFormatter.BOTTOM_RIGHT
+        padding = (width - 2 - len(title)) // 2
+        title_line = f"{side} {title.center(width - 4)} {side}"
+
+        return f"\n{top}\n{title_line}\n{bottom}\n"
+
+    @staticmethod
+    def format_vad_bar(vad_prob: float, threshold: float, width: int = 10) -> str:
+        """Create ASCII progress bar for VAD level."""
+        filled = int((vad_prob / 1.0) * width)
+        bar = UIFormatter.FILLED_BAR * filled + UIFormatter.EMPTY_BAR * (width - filled)
+
+        if vad_prob > threshold:
+            return UIFormatter.colorize(bar, "green")
+        elif vad_prob > threshold * 0.66:
+            return UIFormatter.colorize(bar, "yellow")
+        else:
+            return UIFormatter.colorize(bar, "gray")
+
+    @staticmethod
+    def format_cycle_header(cycle: int, elapsed_sec: float) -> str:
+        """Format cycle header with timing."""
+        minutes = int(elapsed_sec // 60)
+        seconds = int(elapsed_sec % 60)
+        millis = int((elapsed_sec % 1) * 1000)
+        time_str = f"{minutes:02d}:{seconds:02d}.{millis:03d}"
+
+        width = 70
+        header = f"Cycle {cycle}"
+        padding = width - len(header) - len(time_str) - 4
+        line = f"{header} {' ' * padding} {time_str}"
+
+        top = UIFormatter.TOP_LEFT + UIFormatter.HORIZONTAL * (width - 2) + UIFormatter.TOP_RIGHT
+        middle = UIFormatter.VERTICAL + line + UIFormatter.VERTICAL
+        return f"{top}\n{middle}"
+
+    @staticmethod
+    def format_table_separator(col_widths: List[int], junction_char: Optional[str] = None) -> str:
+        """Format a table separator line."""
+        if junction_char is None:
+            junction_char = UIFormatter.CROSS
+        parts = []
+        for i, width in enumerate(col_widths):
+            parts.append(UIFormatter.HORIZONTAL * width)
+
+        # Determine left and right edge characters based on junction type
+        if junction_char == UIFormatter.T_DOWN:  # Top separator
+            left_edge = UIFormatter.TOP_LEFT
+            right_edge = UIFormatter.TOP_RIGHT
+        elif junction_char == UIFormatter.CROSS:  # Middle separator
+            left_edge = UIFormatter.T_RIGHT
+            right_edge = UIFormatter.T_LEFT
+        elif junction_char == UIFormatter.T_UP:  # Bottom separator
+            left_edge = UIFormatter.BOTTOM_LEFT
+            right_edge = UIFormatter.BOTTOM_RIGHT
+        else:
+            left_edge = UIFormatter.T_RIGHT
+            right_edge = UIFormatter.T_LEFT
+
+        return left_edge + junction_char.join(parts) + right_edge
+
+    @staticmethod
+    def format_table_row(
+        values: List[str], col_widths: List[int], is_header: bool = False
+    ) -> str:
+        """Format a table row."""
+        formatted = []
+        for value, width in zip(values, col_widths):
+            if is_header:
+                formatted.append(value.center(width))
+            else:
+                formatted.append(value.ljust(width))
+        return UIFormatter.VERTICAL + UIFormatter.VERTICAL.join(formatted) + UIFormatter.VERTICAL
+
+    @staticmethod
+    def format_device_table(devices_data: List[dict], threshold: float) -> str:
+        """Format device scan results as table."""
+        col_widths = [4, 26, 9, 10, 12]
+
+        output = []
+        # Header
+        sep_top = UIFormatter.format_table_separator(col_widths, UIFormatter.T_DOWN)
+        output.append(sep_top)
+
+        header_vals = ["ID", "Device Name", "VAD", "RMS", "Status"]
+        header = UIFormatter.format_table_row(header_vals, col_widths, is_header=True)
+        output.append(header)
+
+        sep_header = UIFormatter.format_table_separator(col_widths, UIFormatter.CROSS)
+        output.append(sep_header)
+
+        # Rows
+        for device_info in devices_data:
+            device_id = str(device_info["device_id"]).rjust(2)
+            device_name = device_info["name"][:24]
+            vad_str = f"{device_info['vad']:.3f}"
+            rms_str = f"{device_info['rms']:.4f}"
+            status = UIFormatter.format_vad_bar(device_info["vad"], threshold)
+
+            row_vals = [device_id, device_name, vad_str, rms_str, status]
+            row = UIFormatter.format_table_row(row_vals, col_widths)
+            output.append(row)
+
+        sep_bottom = UIFormatter.format_table_separator(col_widths, UIFormatter.T_UP)
+        output.append(sep_bottom)
+
+        return "\n".join(output)
+
+    @staticmethod
+    def format_detection_summary(device: AudioDeviceInfo, vad_prob: float, cycles: int, elapsed: float) -> str:
+        """Format detection success summary."""
+        title = "✓ DEVICE DETECTED"
+        banner = UIFormatter.format_banner(title)
+
+        minutes = int(elapsed // 60)
+        seconds = int(elapsed % 60)
+        millis = int((elapsed % 1) * 1000)
+        time_str = f"{minutes:02d}:{seconds:02d}.{millis:03d}"
+
+        summary = f"""
+  Device ID:        {device.device_id}
+  Device Name:      {device.name}
+  Channels:         {device.channels}
+  Sample Rate:      {int(device.sample_rate)} Hz
+  Host API:         {device.api}
+
+  VAD Probability:  {vad_prob:.4f}
+  Cycles Elapsed:   {cycles}
+  Time Elapsed:     {time_str}
+
+  Status: SPEECH DETECTED ✓
+"""
+        return banner + summary
 
 
 class DeviceScanner:
@@ -43,6 +234,7 @@ class DeviceScanner:
         """
         self.vad_threshold = vad_threshold
         self.chunk_duration_ms = chunk_duration_ms
+        self.start_time = time.time()
 
         # Initialize components
         self.vad_detector = VADDetector(sample_rate=16000)
@@ -57,9 +249,43 @@ class DeviceScanner:
         if not self.devices:
             raise RuntimeError("No audio input devices found!")
 
-        print(f"\nFound {len(self.devices)} audio input device(s)")
+        # Display startup banner
+        banner = UIFormatter.format_banner("Audio Input Device Scanner - VAD Detection")
+        print(banner)
+        print(f"Found {len(self.devices)} audio input device(s):")
         for device in self.devices:
-            print(f"  [{device.device_id}] {device.name} ({device.channels}ch, {device.sample_rate}Hz)")
+            print(f"  [{device.device_id:2d}] {device.name:30s} ({int(device.channels)}ch, {int(device.sample_rate)}Hz)")
+
+    def _read_with_timeout(self, stream: sd.InputStream, chunk_samples: int, timeout_sec: float = 1.0) -> Tuple[Optional[np.ndarray], bool]:
+        """
+        Read from stream with timeout to prevent hanging on unresponsive devices.
+
+        Args:
+            stream: Audio input stream
+            chunk_samples: Number of samples to read
+            timeout_sec: Timeout in seconds (default: 1.0)
+
+        Returns:
+            Tuple of (audio_data, success) where success=False if timeout occurred
+        """
+        result_queue = Queue()
+
+        def read_thread():
+            try:
+                audio, overflowed = stream.read(chunk_samples)
+                result_queue.put((audio, overflowed, True))
+            except Exception as e:
+                result_queue.put((None, False, False))
+
+        thread = threading.Thread(target=read_thread, daemon=True)
+        thread.start()
+
+        try:
+            audio, overflowed, success = result_queue.get(timeout=timeout_sec)
+            return audio if success else None, overflowed if success else False
+        except Empty:
+            # Timeout occurred
+            return None, False
 
     def _open_device_stream(self, device: AudioDeviceInfo) -> Tuple[sd.InputStream, Resampler]:
         """
@@ -81,6 +307,7 @@ class DeviceScanner:
                 samplerate=int(device.sample_rate),
                 blocksize=samples_per_chunk,
                 dtype=np.float32,
+                latency='low',
             )
             stream.start()
 
@@ -115,21 +342,41 @@ class DeviceScanner:
         print("Listening for speech... (Ctrl+C to exit)\n")
 
         # Open streams for all devices
+        # Skip ALSA plugins that are unlikely to work for real-time audio capture
+        skip_devices = {'sysdefault', 'lavrate', 'samplerate', 'speexrate', 'upmix', 'vdownmix', 'speex'}
         active_streams = {}
+
         for device in self.devices:
-            stream, resampler = self._open_device_stream(device)
-            if stream is not None:
-                active_streams[device.device_id] = {
-                    "device": device,
-                    "stream": stream,
-                    "resampler": resampler,
-                }
+            # Skip ALSA plugin devices that commonly cause issues
+            if any(skip_name in device.name for skip_name in skip_devices):
+                continue
+
+            # Open device with timeout to prevent hanging
+            result_queue = Queue()
+            def open_thread():
+                stream, resampler = self._open_device_stream(device)
+                result_queue.put((stream, resampler))
+
+            thread = threading.Thread(target=open_thread, daemon=True)
+            thread.start()
+
+            try:
+                stream, resampler = result_queue.get(timeout=2.0)
+                if stream is not None:
+                    active_streams[device.device_id] = {
+                        "device": device,
+                        "stream": stream,
+                        "resampler": resampler,
+                    }
+            except Empty:
+                # Device open timed out, skip it
+                pass
 
         if not active_streams:
             print("Error: Could not open any device streams!")
             return None, 0.0
 
-        print(f"Successfully opened {len(active_streams)} device stream(s)\n")
+        print(f"Scanning {len(active_streams)} device stream(s) for voice activity...\n")
 
         try:
             cycle = 0
@@ -137,7 +384,12 @@ class DeviceScanner:
                 cycle += 1
                 vad_readings = {}  # Store VAD for each device in this cycle
 
-                print(f"[Cycle {cycle}] Scanning all devices...")
+                # Calculate elapsed time
+                elapsed = time.time() - self.start_time
+
+                # Print cycle header
+                cycle_header = UIFormatter.format_cycle_header(cycle, elapsed)
+                print(cycle_header)
 
                 # Scan all active devices in this cycle
                 for device_id, device_info in active_streams.items():
@@ -146,11 +398,16 @@ class DeviceScanner:
                     resampler = device_info["resampler"]
 
                     try:
-                        # Read audio chunk from device
+                        # Read audio chunk from device with timeout
                         chunk_samples = int(
                             device.sample_rate * self.chunk_duration_ms / 1000
                         )
-                        audio, overflowed = stream.read(chunk_samples)
+                        audio, overflowed = self._read_with_timeout(stream, chunk_samples, timeout_sec=0.5)
+
+                        if audio is None:
+                            # Device read timed out, skip this device
+                            continue
+
                         audio = audio.reshape(-1)
 
                         if overflowed:
@@ -173,40 +430,41 @@ class DeviceScanner:
 
                         # Store reading for this device
                         vad_readings[device_id] = {
-                            "device": device,
-                            "vad_prob": vad_prob,
+                            "device_id": device.device_id,
+                            "name": device.name,
+                            "vad": vad_prob,
                             "rms": rms
                         }
-
-                        # Print status
-                        print(
-                            f"  Device {device.device_id:2d} ({device.name:30s}): "
-                            f"VAD={vad_prob:.3f} RMS={rms:.4f}"
-                        )
 
                     except Exception as e:
                         print(f"  Error reading from device {device.device_id}: {e}")
                         continue
 
-                # Find device with highest VAD in this cycle
+                # Format and print device table
                 if vad_readings:
-                    max_device_id = max(vad_readings.keys(),
-                                       key=lambda k: vad_readings[k]["vad_prob"])
-                    max_reading = vad_readings[max_device_id]
-                    max_device = max_reading["device"]
-                    max_vad = max_reading["vad_prob"]
+                    devices_data = list(vad_readings.values())
+                    table = UIFormatter.format_device_table(devices_data, self.vad_threshold)
+                    print(table)
 
-                    print(f"\n  → Highest VAD: Device {max_device.device_id} ({max_device.name}) = {max_vad:.3f}")
+                    # Find device with highest VAD in this cycle
+                    max_device_id = max(vad_readings.keys(),
+                                       key=lambda k: vad_readings[k]["vad"])
+                    max_reading = vad_readings[max_device_id]
+                    max_vad = max_reading["vad"]
+                    max_device = next((d for d in self.devices if d.device_id == max_device_id), None)
+
+                    # Print summary
+                    status = "✓ DETECTED" if max_vad > self.vad_threshold else "Below threshold"
+                    print(f"\n  ► Highest: Device {max_device_id} ({max_device.name}) = {max_vad:.3f} | {status} ({self.vad_threshold})")
 
                     # Check if threshold exceeded
                     if max_vad > self.vad_threshold:
-                        print(f"\n{'=' * 70}")
-                        print(f"✓ DETECTED: Device {max_device.device_id} ({max_device.name})")
-                        print(f"  VAD Probability: {max_vad:.3f} (threshold: {self.vad_threshold})")
-                        print(f"{'=' * 70}")
+                        # Print formatted detection summary
+                        summary = UIFormatter.format_detection_summary(max_device, max_vad, cycle, elapsed)
+                        print(summary)
                         return max_device, max_vad
                     else:
-                        print(f"  (Below threshold {self.vad_threshold}, continuing...)\n")
+                        print()
 
         except KeyboardInterrupt:
             print("\n\nInterrupted by user")
@@ -415,20 +673,7 @@ def main():
         detected_device, vad_prob = scanner.scan_devices()
 
         if detected_device:
-            print(f"\nDetection complete!")
-            print("=" * 70)
-            print("DETECTED DEVICE DETAILS")
-            print("=" * 70)
-            print(f"Device ID:              {detected_device.device_id}")
-            print(f"Device Name:            {detected_device.name}")
-            print(f"Input Channels:         {detected_device.channels}")
-            print(f"Default Sample Rate:    {detected_device.sample_rate} Hz")
-            print(f"Host API:               {detected_device.api}")
-            print(f"VAD Probability:        {vad_prob:.4f}")
-            print(f"Threshold:              {args.threshold}")
-            print(f"Status:                 ✓ SPEECH DETECTED")
-            print("=" * 70)
-            print(f"\nDevice {detected_device.device_id} is ready for audio capture!")
+            print(f"\n✓ Device {detected_device.device_id} is ready for audio capture!")
 
             # Record audio if requested
             if args.record and args.record > 0:
