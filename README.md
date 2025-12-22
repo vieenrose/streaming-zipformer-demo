@@ -59,5 +59,6 @@ P.S. silero-vad-lite supports both 8kHz and 16kHz while ten-vad requires 16kHz i
 3. redesign hotwords to satisfy 3.2.2. for models which are not delivred with bpe.vocab, make sure to export their own one with official [tool]](https://github.com/k2-fsa/sherpa-onnx/blob/master/scripts/export_bpe_vocab.py). then make hotword work with hotwords file on script obtained in step 1 then in the next with stream-level dynamic hotword list. 
 4. enumerate all available audio input devices on the system and automatically detect the active microphone through Voice Activity Detection (VAD) in real-time scanning cycles; exit when speech is detected above a configurable threshold (default 0.75) and display formatted device metrics (VAD probability, RMS levels, cycle timing) in a docker-compatible text-based UI with unicode table formatting and progress bar indicators.
 5. create MP3 recorder
-6. add UIs
-7. port into docker compose
+6. integrate all ASR engines that perform STT in parallel
+7. add UIs
+8. port into docker compose
