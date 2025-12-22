@@ -132,18 +132,18 @@ def calculate_rms(audio_chunk):
     return np.sqrt(np.mean(audio_chunk ** 2))
 
 
-class AGC:
-    """Automatic Gain Control to amplify low-amplitude signals."""
+class SlowAGC:
+    """Slow Automatic Gain Control for stable amplification in ASR pipeline."""
 
-    def __init__(self, target_level=0.5, max_gain=10.0, attack_time=0.01, release_time=0.5, sample_rate=16000):
+    def __init__(self, target_level=0.2, max_gain=20.0, attack_time=1.0, release_time=3.0, sample_rate=16000):
         """
-        Initialize AGC parameters.
+        Initialize Slow AGC parameters.
 
         Args:
             target_level: Desired output level (0.0-1.0)
             max_gain: Maximum allowed gain to prevent excessive amplification
-            attack_time: Time constant for gain reduction (seconds)
-            release_time: Time constant for gain increase (seconds)
+            attack_time: Time constant for gain reduction (seconds) - SLOW for stability
+            release_time: Time constant for gain increase (seconds) - SLOW for stability
             sample_rate: Audio sample rate
         """
         self.target_level = target_level
@@ -155,7 +155,7 @@ class AGC:
 
     def process(self, audio_chunk):
         """
-        Process audio chunk with AGC.
+        Process audio chunk with Slow AGC.
 
         Args:
             audio_chunk: Input audio as numpy array
@@ -176,12 +176,12 @@ class AGC:
         # Limit the gain to prevent excessive amplification
         desired_gain = min(desired_gain, self.max_gain)
 
-        # Smoothly adjust gain using attack/release coefficients
+        # Smoothly adjust gain using slow attack/release coefficients for stability
         if desired_gain < self.current_gain:
-            # Signal is getting louder, reduce gain (attack)
+            # Signal is getting louder, reduce gain (attack) - SLOW
             self.current_gain = self.current_gain * self.attack_coeff + desired_gain * (1 - self.attack_coeff)
         else:
-            # Signal is getting quieter, increase gain (release)
+            # Signal is getting quieter, increase gain (release) - SLOW
             self.current_gain = self.current_gain * self.release_coeff + desired_gain * (1 - self.release_coeff)
 
         # Apply the current gain to the audio chunk
@@ -401,8 +401,8 @@ def main():
             print("  UI running in background with 3 zones (status, VAD/RMS, transcripts)")
             print("  Press Ctrl+C to stop.\n")
 
-            # Initialize AGC for enhanced VAD sensitivity
-            agc = AGC(target_level=0.3, max_gain=20.0, attack_time=0.01, release_time=0.2, sample_rate=16000)
+            # Initialize Slow AGC for stable amplification
+            slow_agc = SlowAGC(target_level=0.2, max_gain=20.0, attack_time=1.0, release_time=3.0, sample_rate=16000)
 
             chunks_processed = 0
             start_time = time.time()
@@ -413,27 +413,27 @@ def main():
                     audio, overflowed = stream.read(chunk_samples)
                     audio = audio.reshape(-1).astype(np.float32)
 
-                    # Resample to 16kHz for ASR and MP3
+                    # Resample to 16kHz
                     audio_16k = resampler.resample(audio)
 
-                    # DUAL OUTPUT: Same 16kHz audio goes to BOTH:
-                    # 1. MP3 Writer (background encoding)
-                    mp3_writer.write_chunk(audio_16k)
+                    # Apply Slow AGC to resampled audio for stable amplification
+                    agc_audio_16k = slow_agc.process(audio_16k)
 
-                    # 2. ASR Engines (real-time transcription)
-                    asr_pool.feed_audio_chunk(audio_16k)
+                    # DUAL OUTPUT: Same AGC-processed audio goes to BOTH:
+                    # 1. MP3 Writer (background encoding)
+                    mp3_writer.write_chunk(agc_audio_16k)
+
+                    # 2. ASR Engines (real-time transcription) - now with Slow AGC
+                    asr_pool.feed_audio_chunk(agc_audio_16k)
                     asr_pool.process()
 
-                    # Calculate audio levels for UI using the resampled audio (for consistent amplitude)
-                    original_16k_rms_level = calculate_rms(audio_16k)
+                    # Calculate audio levels for UI using the AGC-processed audio
+                    # VAD and RMS both use the same AGC-processed signal
+                    agc_rms_level = calculate_rms(agc_audio_16k)
 
-                    # Apply AGC to the original audio for enhanced VAD sensitivity
-                    agc_audio = agc.process(audio)
-                    agc_rms_level = calculate_rms(agc_audio)
-
-                    # Calculate enhanced VAD on AGC-processed signal
+                    # Calculate VAD on AGC-processed signal for enhanced sensitivity
                     vad_level = min(1.0, agc_rms_level * 15)  # Increased scaling for better sensitivity
-                    rms_level = original_16k_rms_level  # Use resampled audio for consistent RMS display
+                    rms_level = agc_rms_level  # Use AGC-processed signal for RMS display
 
                     # Update UI with audio levels
                     ui.update_audio_levels(vad_level, rms_level)
