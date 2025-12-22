@@ -2,4 +2,6 @@ sherpa-onnx
 sounddevice
 soundfile
 numpy
+scipy
+ten-vad
 opencc-python-reimplemented
