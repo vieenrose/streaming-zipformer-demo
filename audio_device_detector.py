@@ -162,7 +162,7 @@ class UIFormatter:
     @staticmethod
     def format_device_table(devices_data: List[dict], threshold: float) -> str:
         """Format device scan results as table."""
-        col_widths = [4, 28, 9, 10, 12]  # Total: 63 content + 7 borders/separators = 70
+        col_widths = [4, 29, 9, 10, 12]  # Total: 64 content + 7 borders/separators = 71
 
         output = []
         # Header
