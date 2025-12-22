@@ -28,6 +28,7 @@ import soundfile as sf
 
 from audio_device_enum import enumerate_input_devices, AudioDeviceInfo, print_devices
 from audio_processor import Resampler, RMSMeter, VADDetector, AGC
+from mp3_recorder import MP3Recorder
 
 
 class UIFormatter:
@@ -481,6 +482,52 @@ class DeviceScanner:
                     device_info["stream"].close()
                 except Exception:
                     pass
+
+    def start_background_recording(
+        self,
+        device_id: int,
+        output_file: Optional[str] = None,
+        bitrate: int = 128,
+    ) -> MP3Recorder:
+        """
+        Start background MP3 recording from a specific device.
+
+        This is typically called after scan_devices() completes and a
+        device with speech is detected. The recorder runs in background
+        threads while the main program continues with ASR pipeline.
+
+        Args:
+            device_id: Device ID to record from (use detected device from scan_devices)
+            output_file: Output MP3 file path (auto-generated if None)
+            bitrate: MP3 bitrate in kbps (default: 128)
+
+        Returns:
+            MP3Recorder instance (call .stop() to finalize recording)
+
+        Example:
+            # After device detection
+            detected_device, vad_prob = scanner.scan_devices()
+            if detected_device:
+                recorder = scanner.start_background_recording(detected_device.device_id)
+                # ... run ASR pipeline while recording ...
+                recorder.stop()
+        """
+        # Get device sample rate for MP3 recorder
+        device = next((d for d in self.devices if d.device_id == device_id), None)
+        if device is None:
+            raise ValueError(f"Device {device_id} not found")
+
+        # Create and start MP3 recorder
+        recorder = MP3Recorder(
+            device_id=device_id,
+            output_file=output_file,
+            bitrate=bitrate,
+            sample_rate=int(device.sample_rate),
+            channels=1,  # Mono, consistent with VAD pipeline
+            chunk_duration_ms=self.chunk_duration_ms,
+        )
+        recorder.start()
+        return recorder
 
     def record_device(self, device_id: int, duration_sec: float = 10.0, output_file: Optional[str] = None) -> Optional[str]:
         """
