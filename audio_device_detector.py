@@ -182,7 +182,9 @@ class UIFormatter:
             device_name = device_info["name"][:24]
             vad_str = f"{device_info['vad']:.3f}"
             rms_str = f"{device_info['rms']:.4f}"
-            status = UIFormatter.format_vad_bar(device_info["vad"], threshold)
+            # Get bar without colors for proper width calculation in table
+            filled = int((device_info["vad"] / 1.0) * 10)
+            status = UIFormatter.FILLED_BAR * filled + UIFormatter.EMPTY_BAR * (10 - filled)
 
             row_vals = [device_id, device_name, vad_str, rms_str, status]
             row = UIFormatter.format_table_row(row_vals, col_widths)
