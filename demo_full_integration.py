@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-FULL INTEGRATION DEMO: Step 4 + Step 5 + Step 6
+FULL INTEGRATION DEMO: Step 4 + Step 5 + Step 6 + Step 7
 
 Phase 1: Audio Device Detection (Step 4)
   - Enumerate all audio devices
@@ -18,6 +18,11 @@ Phase 3: Parallel ASR Transcription (Step 6)
   - Feed audio chunks from detected device to all models
   - Display live transcriptions from all 3 engines
   - Compare accuracy and latency
+
+Phase 4: UI Integration (Step 7)
+  - Real-time monitor with fixed-grid layout
+  - Three zones: system status, VAD/RMS charts, streaming transcripts
+  - Hotword status tracking and display
 
 NEW: File Input Mode
   - Accept audio file as input instead of microphone
@@ -36,12 +41,14 @@ import numpy as np
 from collections import deque
 import argparse
 import soundfile as sf
+import threading
 
 from audio_device_detector import DeviceScanner
 from audio_processor import Resampler
-from asr_engine import ASREnginePool
+from asr_engine import ASREnginePool, StreamResult
 from asr_config import RecognitionConfig
 from mp3_writer import MP3Writer
+from ui_monitor import DockerCompatibleUI, UIThread, DeviceStatus
 
 
 def print_phase(phase_num, title):
@@ -118,6 +125,72 @@ def process_audio_file(file_path, asr_pool, hotwords_enabled=True):
     print(f"Processed {chunks_processed} chunks")
 
     return chunks_processed
+
+
+def calculate_rms(audio_chunk):
+    """Calculate RMS (Root Mean Square) of audio chunk."""
+    return np.sqrt(np.mean(audio_chunk ** 2))
+
+
+class AGC:
+    """Automatic Gain Control to amplify low-amplitude signals."""
+
+    def __init__(self, target_level=0.5, max_gain=10.0, attack_time=0.01, release_time=0.5, sample_rate=16000):
+        """
+        Initialize AGC parameters.
+
+        Args:
+            target_level: Desired output level (0.0-1.0)
+            max_gain: Maximum allowed gain to prevent excessive amplification
+            attack_time: Time constant for gain reduction (seconds)
+            release_time: Time constant for gain increase (seconds)
+            sample_rate: Audio sample rate
+        """
+        self.target_level = target_level
+        self.max_gain = max_gain
+        self.attack_coeff = np.exp(-1.0 / (attack_time * sample_rate))
+        self.release_coeff = np.exp(-1.0 / (release_time * sample_rate))
+        self.current_gain = 1.0
+        self.sample_rate = sample_rate
+
+    def process(self, audio_chunk):
+        """
+        Process audio chunk with AGC.
+
+        Args:
+            audio_chunk: Input audio as numpy array
+
+        Returns:
+            AGC-processed audio chunk
+        """
+        # Calculate RMS of input chunk
+        input_rms = calculate_rms(audio_chunk)
+
+        # Avoid division by zero
+        if input_rms == 0:
+            return audio_chunk * self.current_gain
+
+        # Calculate desired gain to achieve target level
+        desired_gain = self.target_level / input_rms
+
+        # Limit the gain to prevent excessive amplification
+        desired_gain = min(desired_gain, self.max_gain)
+
+        # Smoothly adjust gain using attack/release coefficients
+        if desired_gain < self.current_gain:
+            # Signal is getting louder, reduce gain (attack)
+            self.current_gain = self.current_gain * self.attack_coeff + desired_gain * (1 - self.attack_coeff)
+        else:
+            # Signal is getting quieter, increase gain (release)
+            self.current_gain = self.current_gain * self.release_coeff + desired_gain * (1 - self.release_coeff)
+
+        # Apply the current gain to the audio chunk
+        output_chunk = audio_chunk * self.current_gain
+
+        # Clip if necessary to prevent values outside [-1, 1]
+        output_chunk = np.clip(output_chunk, -1.0, 1.0)
+
+        return output_chunk
 
 
 def main():
@@ -200,7 +273,7 @@ def main():
 
     else:
         # =========================================================================
-        # MICROPHONE INPUT MODE: Original functionality
+        # MICROPHONE INPUT MODE: Original functionality with UI
         # =========================================================================
         print_phase(1, "Audio Device Detection with VAD (Step 4)")
 
@@ -247,9 +320,9 @@ def main():
             return False
 
         # =========================================================================
-        # PHASE 2 & 3: PARALLEL MP3 RECORDING + ASR TRANSCRIPTION
+        # PHASE 2 & 3: PARALLEL MP3 RECORDING + ASR TRANSCRIPTION + UI
         # =========================================================================
-        print_phase(2, "MP3 Recording + Parallel ASR (Steps 5 & 6 Combined)")
+        print_phase(2, "MP3 Recording + Parallel ASR + UI (Steps 5, 6 & 7 Combined)")
 
         try:
             # Generate output filename
@@ -274,6 +347,28 @@ def main():
                 channels=1,
                 bitrate=128,
             )
+
+            # Create UI
+            ui = DockerCompatibleUI()
+            ui.set_device_status(DeviceStatus(
+                device_id=detected_device.device_id,
+                name=detected_device.name,
+                sample_rate=detected_device.sample_rate,
+                channels=detected_device.channels,
+                dtype="float32",  # Default dtype for audio input
+                api=detected_device.api
+            ))
+
+            # Set hotwords in UI
+            all_hotwords = []
+            for model_config in asr_pool.config.models.values():
+                if model_config.hotwords:
+                    all_hotwords.extend(model_config.hotwords.hotwords)
+            ui.update_hotwords(list(set(all_hotwords)))  # Remove duplicates
+
+            # Start UI thread
+            ui_thread = UIThread(ui)
+            ui_thread.start()
 
             print(f"Starting recording + transcription...")
             print(f"  Device:   {detected_device.name} (ID: {selected_device_id})")
@@ -303,11 +398,11 @@ def main():
 
             print("▶ Recording and transcribing CONTINUOUSLY...")
             print("  Each model runs on 4 CPU threads for better performance")
+            print("  UI running in background with 3 zones (status, VAD/RMS, transcripts)")
             print("  Press Ctrl+C to stop.\n")
-            print("┌" + "─" * 85 + "┐")
-            print("│ LIVE ASR TRANSCRIPTION (MP3 Recording in Background)".ljust(86) + "│")
-            print("│ Each model: 4 threads | Latency = avg time per chunk".ljust(86) + "│")
-            print("├" + "─" * 85 + "┤")
+
+            # Initialize AGC for enhanced VAD sensitivity
+            agc = AGC(target_level=0.3, max_gain=20.0, attack_time=0.01, release_time=0.2, sample_rate=16000)
 
             chunks_processed = 0
             start_time = time.time()
@@ -318,7 +413,7 @@ def main():
                     audio, overflowed = stream.read(chunk_samples)
                     audio = audio.reshape(-1).astype(np.float32)
 
-                    # Resample to 16kHz
+                    # Resample to 16kHz for ASR and MP3
                     audio_16k = resampler.resample(audio)
 
                     # DUAL OUTPUT: Same 16kHz audio goes to BOTH:
@@ -329,35 +424,43 @@ def main():
                     asr_pool.feed_audio_chunk(audio_16k)
                     asr_pool.process()
 
+                    # Calculate audio levels for UI using the resampled audio (for consistent amplitude)
+                    original_16k_rms_level = calculate_rms(audio_16k)
+
+                    # Apply AGC to the original audio for enhanced VAD sensitivity
+                    agc_audio = agc.process(audio)
+                    agc_rms_level = calculate_rms(agc_audio)
+
+                    # Calculate enhanced VAD on AGC-processed signal
+                    vad_level = min(1.0, agc_rms_level * 15)  # Increased scaling for better sensitivity
+                    rms_level = original_16k_rms_level  # Use resampled audio for consistent RMS display
+
+                    # Update UI with audio levels
+                    ui.update_audio_levels(vad_level, rms_level)
+
+                    # Update UI with ASR results
+                    results = asr_pool.get_results()
+                    ui_thread.update_results(results)
+
                     chunks_processed += 1
 
-                    # Get and display ASR results (every 10 chunks = 1 second)
-                    if chunks_processed % 10 == 0:
-                        elapsed = time.time() - start_time
-                        results = asr_pool.get_results()
-
+                    # Update transcripts in UI (every 5 chunks for efficiency)
+                    if chunks_processed % 5 == 0:
                         for model_id, result in results.items():
-                            display_text = result.partial if result.partial else result.final
-                            display_text = display_text[:40] if len(display_text) > 40 else display_text
-                            # Show: model_id | text | latency (ms/chunk)
-                            perf_str = f"  {result.latency_ms:6.1f}ms"
-                            print(f"│ {model_id:18s} │ {display_text:40s} │{perf_str:8s} │")
-
-                        # Show elapsed time and chunk throughput
-                        mins = int(elapsed // 60)
-                        secs = elapsed % 60
-                        throughput = chunks_processed / elapsed if elapsed > 0 else 0
-                        info_str = f"[{mins:02d}:{secs:05.2f}] {throughput:5.1f} ch/s"
-                        print(f"│ {info_str:78s} │")
+                            transcript = result.partial if result.partial else result.final
+                            if transcript:
+                                ui.update_transcript(model_id, transcript)
 
             except KeyboardInterrupt:
-                print("\n│ ✓ Stopping (Ctrl+C received)...".ljust(86) + "│")
+                print("\n✓ Stopping (Ctrl+C received)...")
+
+            # Stop UI thread
+            ui_thread.stop()
 
             # Stop stream and MP3 writer
             stream.stop()
             stream.close()
 
-            print("└" + "─" * 85 + "┘")
             print("\n▶ Finalizing MP3 file...")
             mp3_writer.stop()
 
@@ -374,7 +477,7 @@ def main():
 
             # Display final results
             print("-" * 80)
-            print("✓ COMBINED PHASE COMPLETE: Parallel recording + ASR successful")
+            print("✓ COMBINED PHASE COMPLETE: Parallel recording + ASR + UI successful")
             print("-" * 80)
 
             print(f"\nMP3 Recording Details:")
@@ -405,6 +508,8 @@ def main():
                 if 'stream' in locals():
                     stream.stop()
                     stream.close()
+                if 'ui_thread' in locals():
+                    ui_thread.stop()
             except:
                 pass
             return False
@@ -434,6 +539,7 @@ def main():
         print(f"  Phase 1 (Detection):      ✓ Detected device {selected_device_id}")
         print(f"  Phase 2 (MP3 Recording):  ✓ Recorded {duration:.2f}s of audio")
         print(f"  Phase 3 (ASR Streaming):  ✓ Transcribed with 3 models in parallel")
+        print(f"  Phase 4 (UI Integration): ✓ Real-time monitor with 3 zones")
 
         print("\n📁 Files Created:")
         print(f"  MP3 Recording: {output_file}")
