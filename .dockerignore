@@ -1,0 +1,56 @@
+# Docker Compose - Ignore Patterns for Build Context
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Documentation (not needed in container)
+README.md
+CLAUDE.md
+*.md
+
+# Test scripts (not needed in production)
+test_*.py
+speech_recognition_mic.py
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# Audio recordings (don't include test artifacts)
+*.wav
+*.mp3
+recordings/
+
+# Docker files
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+# OS files
+.DS_Store
+Thumbs.db

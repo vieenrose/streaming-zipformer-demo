@@ -1,0 +1,56 @@
+# Docker Compose Configuration for Sherpa-ONNX ASR Demo
+# Step 9: Port into Docker Compose
+
+services:
+  sherpa-asr:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sherpa-asr-demo
+    image: sherpa-asr-demo:latest
+    
+    # Audio device passthrough (Linux ALSA)
+    # Docker ALSA device mapping: Host /dev/snd → Container /dev/snd
+    # Note: Devices must be auto-detected by DeviceScanner, not hardcoded
+    devices:
+      - /dev/snd:/dev/snd
+    
+    # Environment variables
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      # Model directory (volume mounted)
+      - MODELS_DIR=/app/models
+    
+    # Volume for ASR models (pre-downloaded outside container)
+    volumes:
+      - ./models:/app/models:ro
+      # Optional: Mount audio recording directory
+      - ./recordings:/app/recordings
+    
+    # Networking (required for audio device access in some cases)
+    network_mode: host
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Resource limits - increased for 3 ASR models × 4 threads = 12 threads
+    deploy:
+      resources:
+        limits:
+          cpus: '6.0'
+          memory: 4G
+        reservations:
+          cpus: '2.0'
+          memory: 1G
+    
+    # Logs configuration (Docker Compose compatible UI)
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Interactive mode (for audio input)
+    stdin_open: true
+    tty: true
