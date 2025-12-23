@@ -60,6 +60,6 @@ P.S. silero-vad-lite supports both 8kHz and 16kHz while ten-vad requires 16kHz i
 4. enumerate all available audio input devices on the system and automatically detect the active microphone through Voice Activity Detection (VAD) in real-time scanning cycles; exit when speech is detected above a configurable threshold (default 0.75) and display formatted device metrics (VAD probability, RMS levels, cycle timing) in a docker-compatible text-based UI with unicode table formatting and progress bar indicators.
 5. implement a background MP3 recording system that captures audio from the selected device while simultaneously feeding the same audio stream to ASR engines for real-time transcription.
 6. orchestrate multiple Automatic Speech Recognition engines running simultaneously to provide real-time comparative transcription, enabling users to evaluate model performance side-by-side with hotword support
-7. add UIs (compatible with docker compose logs)
+7. create a Docker-compatible text-based UI that displays real-time audio analysis with three fixed-grid zones (system status header, VAD/RMS bar charts, and streaming transcripts) for integration with Docker Compose logs.
 8. ensure zh-TW to zh-CN conversion on hotword list and zn-CN to zh-TW on transcript
 8. port into docker compose
