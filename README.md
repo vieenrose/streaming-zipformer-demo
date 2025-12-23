@@ -62,4 +62,4 @@ P.S. silero-vad-lite supports both 8kHz and 16kHz while ten-vad requires 16kHz i
 6. orchestrate multiple Automatic Speech Recognition engines running simultaneously to provide real-time comparative transcription, enabling users to evaluate model performance side-by-side with hotword support
 7. create a Docker-compatible text-based UI that displays real-time audio analysis with three fixed-grid zones (system status header, VAD/RMS bar charts, and streaming transcripts) for integration with Docker Compose logs.
 8. ensure zh-TW to zh-CN conversion on hotword list and zn-CN to zh-TW on transcript
-8. port into docker compose
+9. port into docker compose
