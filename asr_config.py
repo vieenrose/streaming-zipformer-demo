@@ -15,6 +15,46 @@ from dataclasses import dataclass
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 
+# =========================================================================
+# CENTRALIZED HOTWORD LIST (zh-TW: Traditional Chinese)
+# =========================================================================
+# All ASR models share this single hotword list
+# Storage format: zh-TW (Traditional) for UI display
+# Conversion: zh-TW → zh-CN (Simplified) before sending to ASR
+# =========================================================================
+
+ZH_TW_HOTWORDS = [
+    # Person names in pure zh-TW
+    "張偉明",  # 张伟明 (zh-CN)
+    "李建國",  # 李建国 (zh-CN)
+    "王曉紅",  # 王小红 (zh-CN)
+    "陳志強",  # 陈志强 (zh-CN)
+    "劉芳芳",  # 刘芳芳 (zh-CN)
+    "楊光明",  # 杨光明 (zh-CN)
+    "趙文靜",  # 赵文静 (zh-CN)
+    "黃麗華",  # 黄丽华 (zh-CN)
+    "周永康",  # 周永康 (zh-CN, unchanged in zh-TW)
+    "吳天明",  # 吴天明 (zh-CN)
+
+    # Person names in mixed zh-TW/en
+    "Mark Ma",   # Mark Ma (unchanged)
+    "Ken Li",    # Ken Li (unchanged)
+
+    # English hotwords
+    "LILY",
+    "LUCY",
+    "EMMA",
+    "KEVIN",
+    "CINDY",
+    "TONY",
+    "AMY",
+    "DAVID",
+    "JESSICA",
+    "MICHAEL",
+]
+
+HOTWORD_BOOST_SCORE = 1.5
+
 
 # =========================================================================
 # MODEL CONFIGURATION
@@ -116,8 +156,9 @@ class ASRConfig:
             bpe_model_path=os.path.join(model1_dir, "bpe.model"),
             bpe_vocab_path=os.path.join(model1_dir, "bpe.vocab"),
             hotwords=HotwordConfig(
-                hotwords=["张伟明", "李建国", "王小红", "陈志强", "刘芳芳", "杨光明", "赵文静", "黄丽华", "周永康", "吴天明", "LILY", "LUCY", "EMMA", "KEVIN", "CINDY", "TONY", "AMY", "DAVID", "JESSICA", "MICHAEL"],
-                boost_score=1.5
+                # Use centralized ZH_TW_HOTWORDS list
+                hotwords=ZH_TW_HOTWORDS,
+                boost_score=HOTWORD_BOOST_SCORE
             ),
             modeling_unit="cjkchar+bpe",  # Required for bilingual zh-en with hotwords
             num_threads=4,
@@ -138,8 +179,9 @@ class ASRConfig:
             bpe_model_path=os.path.join(model2_dir, "bpe.model"),  # Now we have the BPE model
             bpe_vocab_path=os.path.join(model2_dir, "bpe.vocab"),  # Now we have the bpe.vocab
             hotwords=HotwordConfig(
-                hotwords=["张伟明", "李建国", "王小红", "陈志强", "刘芳芳", "杨光明", "赵文静", "黄丽华", "周永康", "吴天明", "LILY", "LUCY", "EMMA", "KEVIN", "CINDY", "TONY", "AMY", "DAVID", "JESSICA", "MICHAEL"],
-                boost_score=1.5
+                # Use centralized ZH_TW_HOTWORDS list
+                hotwords=ZH_TW_HOTWORDS,
+                boost_score=HOTWORD_BOOST_SCORE
             ),
             modeling_unit="cjkchar+bpe",  # Required for bilingual zh-en with hotwords
             num_threads=4,
@@ -160,8 +202,9 @@ class ASRConfig:
             bpe_model_path=os.path.join(model3_dir, "bpe.model"),
             bpe_vocab_path=os.path.join(model3_dir, "bpe.vocab"),
             hotwords=HotwordConfig(
-                hotwords=["张伟明", "李建国", "王小红", "陈志强", "刘芳芳", "杨光明", "赵文静", "黄丽华", "周永康", "吴天明", "LILY", "LUCY", "EMMA", "KEVIN", "CINDY", "TONY", "AMY", "DAVID", "JESSICA", "MICHAEL"],
-                boost_score=1.5
+                # Use centralized ZH_TW_HOTWORDS list
+                hotwords=ZH_TW_HOTWORDS,
+                boost_score=HOTWORD_BOOST_SCORE
             ),
             modeling_unit="cjkchar+bpe",  # Required for multilingual with hotwords
             num_threads=4,

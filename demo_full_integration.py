@@ -135,7 +135,7 @@ def calculate_rms(audio_chunk):
 class SlowAGC:
     """Slow Automatic Gain Control for stable amplification in ASR pipeline."""
 
-    def __init__(self, target_level=0.2, max_gain=20.0, attack_time=1.0, release_time=3.0, sample_rate=16000):
+    def __init__(self, target_level=0.2, max_gain=256.0, attack_time=1.0, release_time=3.0, sample_rate=16000):
         """
         Initialize Slow AGC parameters.
 
@@ -402,7 +402,7 @@ def main():
             print("  Press Ctrl+C to stop.\n")
 
             # Initialize Slow AGC for stable amplification
-            slow_agc = SlowAGC(target_level=0.2, max_gain=20.0, attack_time=1.0, release_time=3.0, sample_rate=16000)
+            slow_agc = SlowAGC(target_level=0.2, max_gain=256.0, attack_time=1.0, release_time=3.0, sample_rate=16000)
 
             chunks_processed = 0
             start_time = time.time()

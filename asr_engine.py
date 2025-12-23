@@ -31,6 +31,20 @@ import sherpa_onnx
 
 from asr_config import ASRConfig, RecognitionConfig
 
+# Initialize OpenCC converter (zh-TW to zh-CN)
+try:
+    import opencc
+    OPENCC_AVAILABLE = True
+    OPENCC_CONVERTER = opencc.OpenCC('t2s')  # Traditional → Simplified
+except ImportError:
+    print("Warning: opencc-python-reimplemented not available. zh-TW to zh-CN conversion disabled.")
+    OPENCC_AVAILABLE = False
+    OPENCC_CONVERTER = None
+except Exception as e:
+    print(f"Warning: OpenCC initialization failed: {e}. zh-TW to zh-CN conversion disabled.")
+    OPENCC_AVAILABLE = False
+    OPENCC_CONVERTER = None
+
 
 # =========================================================================
 # RESULT TRACKING CLASSES
@@ -75,6 +89,31 @@ class StreamResult:
 class ModelInstance:
     """Manages state and inference for a single ASR model."""
 
+    @staticmethod
+    def convert_hotwords_zh_tw_to_zh_cn(hotwords: List[str]) -> List[str]:
+        """
+        Convert hotwords from zh-TW (Traditional) to zh-CN (Simplified) before sending to ASR.
+
+        Args:
+            hotwords: List of hotwords in zh-TW format
+
+        Returns:
+            List of hotwords in zh-CN format (or original if OpenCC unavailable)
+        """
+        if not OPENCC_AVAILABLE or OPENCC_CONVERTER is None:
+            # OpenCC not available, return hotwords as-is (zh-TW)
+            print(f"Warning: zh-TW → zh-CN conversion not available for hotwords. Using zh-TW directly.")
+            return hotwords
+
+        try:
+            # Convert each hotword from Traditional (zh-TW) to Simplified (zh-CN)
+            converted = [OPENCC_CONVERTER.convert(hw) for hw in hotwords]
+            print(f"✓ Converted {len(converted)} hotwords from zh-TW to zh-CN")
+            return converted
+        except Exception as e:
+            print(f"Warning: zh-TW → zh-CN conversion failed: {e}. Using zh-TW hotwords directly.")
+            return hotwords
+
     def __init__(
         self,
         model_id: str,
@@ -96,8 +135,11 @@ class ModelInstance:
         # Create stream for this model with hotwords if available
         # Note: hotwords_score is set at recognizer level, only hotwords string passed to create_stream
         if model_config.hotwords and model_config.bpe_vocab_path:
+            # Convert hotwords from zh-TW (Traditional) to zh-CN (Simplified) before ASR
+            converted_hotwords = self.convert_hotwords_zh_tw_to_zh_cn(model_config.hotwords.hotwords)
+
             # Format hotwords as newline-separated uppercase strings (required for BPE tokenization)
-            hotwords_str = "\n".join([hw.upper() for hw in model_config.hotwords.hotwords])
+            hotwords_str = "\n".join([hw.upper() for hw in converted_hotwords])
             self.stream = recognizer.create_stream(hotwords=hotwords_str)
         else:
             self.stream = recognizer.create_stream()
