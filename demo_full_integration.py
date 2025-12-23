@@ -44,7 +44,7 @@ import soundfile as sf
 import threading
 
 from audio_device_detector import DeviceScanner
-from audio_processor import Resampler
+from audio_processor import Resampler, VADDetector
 from asr_engine import ASREnginePool, StreamResult
 from asr_config import RecognitionConfig
 from mp3_writer import MP3Writer
@@ -322,7 +322,7 @@ def main():
         # =========================================================================
         # PHASE 2 & 3: PARALLEL MP3 RECORDING + ASR TRANSCRIPTION + UI
         # =========================================================================
-        print_phase(2, "MP3 Recording + Parallel ASR + UI (Steps 5, 6 & 7 Combined)")
+        print_phase(2, "MP3 Recording + Parallel ASR + UI with Real-time VAD (Steps 5, 6 & 7 Combined)")
 
         try:
             # Generate output filename
@@ -404,6 +404,9 @@ def main():
             # Initialize Slow AGC for stable amplification
             slow_agc = SlowAGC(target_level=0.2, max_gain=256.0, attack_time=1.0, release_time=3.0, sample_rate=16000)
 
+            # Initialize VAD detector for actual speech probability (not RMS heuristic)
+            vad_detector = VADDetector(sample_rate=16000, threshold=0.5)
+
             chunks_processed = 0
             start_time = time.time()
 
@@ -428,11 +431,11 @@ def main():
                     asr_pool.process()
 
                     # Calculate audio levels for UI using the AGC-processed audio
-                    # VAD and RMS both use the same AGC-processed signal
+                    # RMS for display level
                     agc_rms_level = calculate_rms(agc_audio_16k)
 
-                    # Calculate VAD on AGC-processed signal for enhanced sensitivity
-                    vad_level = min(1.0, agc_rms_level * 15)  # Increased scaling for better sensitivity
+                    # Use actual VAD detector for speech probability (not RMS heuristic)
+                    vad_level = vad_detector.get_speech_probability(agc_audio_16k)
                     rms_level = agc_rms_level  # Use AGC-processed signal for RMS display
 
                     # Update UI with audio levels

@@ -219,7 +219,10 @@ class ModelInstance:
                 # Create new stream with hotwords if available
                 # Note: hotwords_score is set at recognizer level, only hotwords string passed here
                 if self.model_config.hotwords and self.model_config.bpe_vocab_path:
-                    hotwords_str = "\n".join([hw.upper() for hw in self.model_config.hotwords.hotwords])
+                    # Convert hotwords from zh-TW (Traditional) to zh-CN (Simplified) before ASR
+                    # (Same conversion as in __init__ for consistency)
+                    converted_hotwords = self.convert_hotwords_zh_tw_to_zh_cn(self.model_config.hotwords.hotwords)
+                    hotwords_str = "\n".join([hw.upper() for hw in converted_hotwords])
                     self.stream = self.recognizer.create_stream(hotwords=hotwords_str)
                 else:
                     self.stream = self.recognizer.create_stream()
