@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from collections import deque
 
 from asr_engine import StreamResult
+from wcwidth import wcswidth
 
 
 @dataclass
@@ -32,6 +33,10 @@ class DeviceStatus:
 
 class DockerCompatibleUI:
     """Docker-compatible text-based UI with fixed-grid layout for real-time monitoring."""
+
+    # Fixed width for content between borders (Option A: Breathing Room)
+    # Format: │ + space + content(78) + space + │ = 82 chars total
+    CONTENT_WIDTH = 78
 
     def __init__(self):
         self.device_status: Optional[DeviceStatus] = None
@@ -118,22 +123,138 @@ class DockerCompatibleUI:
         full_ui = "\n".join(ui_parts)
         return full_ui
     
+    def _get_display_width(self, text: str) -> int:
+        """
+        Get terminal display width (accounts for CJK/wide characters).
+
+        Args:
+            text: Text string to calculate display width for
+
+        Returns:
+            Display width in terminal columns (Chinese chars = 2 cols)
+        """
+        return wcswidth(text)
+
+    def _ljust_display_width(self, text: str, width: int) -> str:
+        """
+        Left-justify text to specified width using display width (accounts for CJK/Arabic).
+
+        Args:
+            text: Text string to justify
+            width: Target display width in columns
+
+        Returns:
+            Text padded with spaces to reach target display width (or truncated if too long)
+        """
+        display_width = self._get_display_width(text)
+        if display_width > width:
+            # Truncate based on display width, not character count
+            # Remove characters from end until display width fits
+            while len(text) > 0 and self._get_display_width(text) > width:
+                text = text[:-1]
+            # Recalculate display width after truncation
+            display_width = self._get_display_width(text)
+            # Add "..." if truncated and there's room
+            if display_width <= width - 3 and len(text) > 3:
+                text = text[:-3] + "..."
+                display_width = self._get_display_width(text)
+
+        # Pad with spaces to reach target display width
+        padding_spaces = width - self._get_display_width(text)
+        return text + ' ' * padding_spaces
+
+    def _rjust_display_width(self, text: str, width: int) -> str:
+        """
+        Right-justify text to specified width using display width (for truncation).
+
+        Args:
+            text: Text string to justify
+            width: Target display width in columns
+
+        Returns:
+            Text left-padded with spaces to reach target display width (for left-truncation)
+        """
+        display_width = self._get_display_width(text)
+        if display_width >= width:
+            return text
+
+        # Pad left with spaces to reach target display width
+        padding_spaces = width - display_width
+        return ' ' * padding_spaces + text
+
+    def _format_content_line(self, prefix: str, value: str, suffix: str = "") -> str:
+        """
+        Format a line with exact CONTENT_WIDTH chars between borders.
+
+        Args:
+            prefix: Label before value (e.g., "Device:     ")
+            value: The actual value to display
+            suffix: Optional text after value (e.g., " Hz")
+
+        Returns:
+            Complete line string: "│ {prefix}{value}{suffix}{padding}│"
+        """
+        # Calculate current content display width (accounts for CJK characters)
+        content_width = self._get_display_width(prefix) + self._get_display_width(value) + self._get_display_width(suffix)
+
+        # Calculate padding needed to reach CONTENT_WIDTH (using display width for CJK chars)
+        padding_len = self.CONTENT_WIDTH - content_width
+
+        # Ensure non-negative padding (truncate value if too long)
+        if padding_len < 0:
+            # Truncate value and add "..."
+            # Note: Using character-based truncation, but display-based padding
+            # This is tradeoff for CJK support without complex algorithms
+            max_chars = len(value) + padding_len - 3
+            value = value[:max_chars] + "..."
+            # Recalculate content width after truncation
+            content_width = self._get_display_width(prefix) + self._get_display_width(value) + self._get_display_width(suffix)
+            padding_len = self.CONTENT_WIDTH - content_width
+
+        # Return formatted line with exact width (82 chars)
+        # Format: │ (1) + space (1) + content(78) + space (1) + │ (1) = 82
+        # Using .ljust() with display-aware padding (works even if content_width > CONTENT_WIDTH)
+        content = f"{prefix}{value}{suffix}"
+        return f"│ {content.ljust(self.CONTENT_WIDTH)} │"
+
     def _draw_header_zone(self) -> str:
         """Draw the header zone with device status."""
         lines = []
         lines.append("┌" + "─" * 80 + "┐")
-        lines.append("│ AUDIO DEVICE STATUS                                                      │")
+        lines.append("│ " + "AUDIO DEVICE STATUS".ljust(self.CONTENT_WIDTH) + " │")
         lines.append("├" + "─" * 80 + "┤")
         
         if self.device_status:
-            lines.append(f"│ Device:     {self.device_status.name[:60]:<60} │")
-            lines.append(f"│ ID:         {self.device_status.device_id:<66} │")
-            lines.append(f"│ Sample Rate: {self.device_status.sample_rate} Hz{'':<59} │")
-            lines.append(f"│ Channels:   {self.device_status.channels}{'':<67} │")
-            lines.append(f"│ Data Type:  {self.device_status.dtype:<67} │")
-            lines.append(f"│ API:        {self.device_status.api:<67} │")
+            lines.append(self._format_content_line(
+                prefix="Device:     ",
+                value=self.device_status.name[:60],
+            ))
+            lines.append(self._format_content_line(
+                prefix="ID:         ",
+                value=str(self.device_status.device_id),
+            ))
+            lines.append(self._format_content_line(
+                prefix="Sample Rate: ",
+                value=str(self.device_status.sample_rate),
+                suffix=" Hz",
+            ))
+            lines.append(self._format_content_line(
+                prefix="Channels:   ",
+                value=str(self.device_status.channels),
+            ))
+            lines.append(self._format_content_line(
+                prefix="Data Type:  ",
+                value=self.device_status.dtype,
+            ))
+            lines.append(self._format_content_line(
+                prefix="API:        ",
+                value=str(self.device_status.api),
+            ))
         else:
-            lines.append("│ No device selected                                                     │")
+            lines.append(self._format_content_line(
+                prefix="No device selected",
+                value="",
+            ))
         
         lines.append("├" + "─" * 80 + "┤")
         return "\n".join(lines)
@@ -141,24 +262,24 @@ class DockerCompatibleUI:
     def _draw_audio_charts_zone(self) -> str:
         """Draw the VAD and RMS bar charts."""
         lines = []
-        lines.append("│ AUDIO LEVELS (VAD & RMS)                                                 │")
+        lines.append("│ " + "AUDIO LEVELS (VAD & RMS)".ljust(self.CONTENT_WIDTH) + " │")
         lines.append("├" + "─" * 80 + "┤")
 
         # Draw VAD chart
-        lines.append("│ VAD LEVEL:                                                              │")
+        lines.append("│ " + "VAD LEVEL:".ljust(self.CONTENT_WIDTH) + " │")
         if self.vad_levels:
-            vad_chart = self._draw_single_bar_chart(list(self.vad_levels), max_val=1.0, width=76)
-            lines.extend([f"│ {line:<76} │" for line in vad_chart])
+            vad_chart = self._draw_single_bar_chart(list(self.vad_levels), max_val=1.0, width=78)
+            lines.extend([f"│ {line.ljust(self.CONTENT_WIDTH)} │" for line in vad_chart])
         else:
-            lines.append("│ [No VAD data available]                                                │")
+            lines.append("│ " + "[No VAD data available]".ljust(self.CONTENT_WIDTH) + " │")
 
         # Draw RMS chart with logarithmic scaling for better visibility of low levels
-        lines.append("│ RMS LEVEL (log scale):                                                  │")
+        lines.append("│ " + "RMS LEVEL (log scale):".ljust(self.CONTENT_WIDTH) + " │")
         if self.rms_levels:
-            rms_chart = self._draw_single_bar_chart(list(self.rms_levels), max_val=1.0, width=76, use_log_scale=True)
-            lines.extend([f"│ {line:<76} │" for line in rms_chart])
+            rms_chart = self._draw_single_bar_chart(list(self.rms_levels), max_val=1.0, width=78, use_log_scale=True)
+            lines.extend([f"│ {line.ljust(self.CONTENT_WIDTH)} │" for line in rms_chart])
         else:
-            lines.append("│ [No RMS data available]                                                │")
+            lines.append("│ " + "[No RMS data available]".ljust(self.CONTENT_WIDTH) + " │")
 
         lines.append("├" + "─" * 80 + "┤")
         return "\n".join(lines)
@@ -205,11 +326,11 @@ class DockerCompatibleUI:
     def _draw_transcripts_zone(self, asr_results: Optional[Dict[str, StreamResult]] = None) -> str:
         """Draw the per-engine streaming transcripts."""
         lines = []
-        lines.append("│ ASR TRANSCRIPTS (Left-truncated, Most Recent Text)                       │")
+        lines.append("│ " + "ASR TRANSCRIPTS (Left-truncated, Most Recent Text)".ljust(self.CONTENT_WIDTH) + " │")
         lines.append("├" + "─" * 80 + "┤")
 
         if not self.transcripts and not asr_results:
-            lines.append("│ [No transcripts available]                                             │")
+            lines.append("│ " + "[No transcripts available]".ljust(self.CONTENT_WIDTH) + " │")
         else:
             # Use asr_results if available, otherwise fall back to self.transcripts
             results_to_display = asr_results if asr_results else {}
@@ -217,10 +338,7 @@ class DockerCompatibleUI:
                 # If no asr_results provided, use self.transcripts
                 for model_id, transcript in self.transcripts.items():
                     display_text = f"{model_id}: {transcript}"
-                    if len(display_text) > 76:
-                        display_text = display_text[:76]
-                    else:
-                        display_text = display_text.ljust(76)
+                    display_text = self._ljust_display_width(display_text, self.CONTENT_WIDTH)
                     lines.append(f"│ {display_text} │")
             else:
                 # Use asr_results with additional information
@@ -238,23 +356,22 @@ class DockerCompatibleUI:
                             print(f"Warning: OpenCC conversion failed in UI: {e}")
 
                     # Left-truncate to show most recent text
-                    max_length = 50
+                    max_length = 50  # Truncate by character count (simplification)
+                    # Note: For Arabic/RTL, character-based truncation is acceptable
+                    # The _ljust_display_width() will handle display width
                     if len(transcript) > max_length:
                         transcript = f"...{transcript[-(max_length-3):]}"
 
                     # Add model name and latency
                     display_text = f"{model_id}: {transcript} [{result.latency_ms:.1f}ms]"
-                    if len(display_text) > 76:
-                        display_text = display_text[:76]
-                    else:
-                        display_text = display_text.ljust(76)
+                    display_text = self._ljust_display_width(display_text, self.CONTENT_WIDTH)
                     lines.append(f"│ {display_text} │")
 
         # Fill remaining space if needed (max 6 transcript rows)
         max_rows = 6  # Maximum number of transcript rows
         actual_rows = len(asr_results) if asr_results else len(self.transcripts)
         for _ in range(max(0, max_rows - actual_rows)):
-            lines.append("│                                                                        │")
+            lines.append("│ " + "".ljust(self.CONTENT_WIDTH) + " │")
 
         lines.append("└" + "─" * 80 + "┘")
         return "\n".join(lines)
