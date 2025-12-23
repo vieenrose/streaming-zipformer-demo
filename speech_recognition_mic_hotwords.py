@@ -170,7 +170,8 @@ def main():
                 print(f"  - {hw}")
 
         # Build hotwords string for create_stream()
-        hotwords_str = "\n".join([hw for hw in hotwords_list if hw])
+        # Uppercase required for consistent BPE tokenization matching
+        hotwords_str = "\n".join([hw.upper() for hw in hotwords_list if hw])
         print(f"  Score: {args.hotwords_score}")
 
     print("Started! Please speak")

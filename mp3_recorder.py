@@ -249,7 +249,7 @@ class MP3Recorder:
             '-ac', str(self.channels),        # Input channels
             '-i', 'pipe:0',                   # Input from stdin
             '-b:a', f'{self.bitrate}k',       # Output bitrate
-            '-q:a', '9',                      # Quality (9 = best compression)
+            '-q:a', '9',                      # VBR quality (0=best, 9=worst)
             self.output_file,                 # Output file
         ]
 

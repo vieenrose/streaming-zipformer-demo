@@ -130,8 +130,29 @@ class ModelConfig:
 class ASRConfig:
     """Container for all ASR models and shared recognition settings."""
 
-    def __init__(self, models_dir: str = "/home/luigi/sherpa/models"):
+    def __init__(self, models_dir: str = None):
         """Initialize ASR configuration."""
+        if models_dir is None:
+            # Try multiple locations for models directory
+            candidates = [
+                # Environment variable
+                os.environ.get("SHERPA_MODELS_DIR"),
+                # Docker: /app/models (mounted volume)
+                "/app/models",
+                # Legacy: /home/luigi/sherpa/models (symlink in Docker)
+                "/home/luigi/sherpa/models",
+                # Host: ./models relative to this file
+                os.path.join(os.path.dirname(os.path.abspath(__file__)), "models"),
+                # Host: ./models relative to project root (this file is in project root)
+                os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models"),
+            ]
+            for candidate in candidates:
+                if candidate and os.path.isdir(candidate):
+                    models_dir = candidate
+                    break
+            else:
+                # Fallback to ./models (will fail validation if not found)
+                models_dir = "./models"
         self.models_dir = models_dir
         self.models: Dict[str, ModelConfig] = {}
 

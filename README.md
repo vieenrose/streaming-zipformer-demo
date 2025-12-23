@@ -5,9 +5,6 @@ A Docker Compose demo that compares 3 sherpa-onnx ASR models side-by-side with r
 ## Quick Start
 
 ```bash
-# Download ASR models to ./models (must be done before building)
-./download_models.sh
-
 # Build and run with Docker Compose
 docker compose up
 

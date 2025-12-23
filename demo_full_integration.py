@@ -31,10 +31,11 @@ NEW: File Input Mode
 """
 
 import sys
-sys.path.insert(0, '/home/luigi/sherpa')
+import os
+# Add project root to path for imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import time
-import os
 import json
 import subprocess
 import numpy as np

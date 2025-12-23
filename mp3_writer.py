@@ -115,7 +115,7 @@ class MP3Writer:
                 if self._ffmpeg_process.stdin:
                     self._ffmpeg_process.stdin.close()
                 self._ffmpeg_process.wait(timeout=5.0)
-            except:
+            except (subprocess.TimeoutExpired, OSError) as e:
                 self._ffmpeg_process.terminate()
 
         self._is_running = False
